@@ -68,14 +68,14 @@ namespace PlayEveryWare.EpicOnlineServices.Editor.Build
         }
 
         /// <summary>
-        /// Determine if deployed as UPM by checking to see if the manifest has an entry for the package.
+        /// Determine if this assembly belongs to a package, including Git packages in Library/PackageCache.
         /// </summary>
         /// <returns>True if the plugin is deployed as UPM, false otherwise.</returns>
         private static bool IsDeployedAsUPM()
         {
-            string packagePathname = Path.GetFullPath(Path.Combine("Packages", EOSPackageInfo.PackageName));
+            var package = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(BuildUtility).Assembly);
 
-            if (Directory.Exists(packagePathname))
+            if (package != null && package.name == EOSPackageInfo.PackageName)
             {
                 Debug.Log("Deployed via UPM");
                 return true;
@@ -128,15 +128,6 @@ namespace PlayEveryWare.EpicOnlineServices.Editor.Build
         /// <param name="platform">Optional msbuild Platform value (e.g. "x64", "ARM64"). Empty to omit the flag.</param>
         /// <returns>True if the build was successful, false otherwise.</returns>
         private delegate bool BuildNativeLibraryDelegate(string projectFilePath, string binaryOutput, string platform);
-
-        static BuildUtility()
-        {
-            // Note: This conditional is here because it only makes sense to 
-            // look for visual studio installations if running on Windows.
-#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
-            FindVSInstallations();
-#endif
-        }
 
         /// <summary>
         /// Used to store information about all the installations of Visual Studio on the current system.
@@ -302,6 +293,15 @@ namespace PlayEveryWare.EpicOnlineServices.Editor.Build
         /// <returns>True if an appropriate installation of Visual Studio has been found that can compile the indicated solution file, false otherwise.</returns>
         private static bool TryGetCompatibleTools(string solutionFilepath, out VSInstallation installation)
         {
+            // Visual Studio is needed only when compiling a native Windows solution.
+            // A Windows player target does not imply that the Editor is running on Windows.
+            if (Application.platform != RuntimePlatform.WindowsEditor)
+            {
+                throw new BuildFailedException("Building native Visual Studio solutions requires a Windows Editor host. Use the UPM package with prebuilt native binaries for cross-platform player builds.");
+            }
+
+            FindVSInstallations();
+
             // TODO: A good improvement to this method would be to limit the search of required PlatformToolset to the PropertyGroup that matches the configuration
             // Get all the platform toolsets required by the solution file.
             DetermineVSPrerequisites(
